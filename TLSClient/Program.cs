@@ -28,15 +28,23 @@ namespace TLSClient
             //deviceServer.Run();
 
             // TCP server address
-            string address = "127.0.0.1";
-            //string address = "45.118.145.137";
+            //string address = "127.0.0.1";
+            string address = "45.118.145.137";
 
             int port = 5000;
 
             Console.WriteLine($"TCP server address, port : {address}, {port}");
-            string numOfClient = Console.ReadLine();
-            int num = Int32.Parse(numOfClient);
+
+            Console.Write("Num of clients: ");
+            string tmp = Console.ReadLine();
+            int num = Int32.Parse(tmp);
             Console.WriteLine("Num of clients: {0}", num);
+
+            Console.Write("Thread sleep: ");
+            tmp = Console.ReadLine();
+            int threadsleep = Int32.Parse(tmp);
+            Console.WriteLine("Thread sleep: {0}", threadsleep);
+
             for (int i = 1000; i < 1000 + num; i++)
             {
                 // Create a new TCP chat client
@@ -47,18 +55,12 @@ namespace TLSClient
                 client.ConnectAsync();
                 //Console.WriteLine("Done!");
 
-                Thread.Sleep(1000);
+                Thread.Sleep(threadsleep);
             }
-
-            Console.WriteLine("Press Enter to stop the client or '!' to reconnect the client...");
 
             // Perform text input
             for (; ; )
             {
-                string line = Console.ReadLine();
-                if (string.IsNullOrEmpty(line))
-                    break;
-
                 //// Disconnect the client
                 //if (line == "!")
                 //{
