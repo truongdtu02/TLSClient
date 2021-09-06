@@ -28,8 +28,8 @@ namespace TLSClient
             //deviceServer.Run();
 
             // TCP server address
-            //string address = "127.0.0.1";
-            string address = "45.118.145.137";
+            string address = "127.0.0.1";
+            //string address = "45.118.145.137";
 
             int port = 5000;
 
