@@ -5,7 +5,9 @@ VisualStudioVersion = 16.0.31515.178
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TLSClient", "TLSClient\TLSClient.csproj", "{20DCF565-577B-4CFE-8DC6-C149F68CC73D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NTPClient", "NTPClient\NTPClient.csproj", "{BD84B4B1-8C09-45C3-AC66-1817B8CD4BB9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NTPClient", "NTPClient\NTPClient.csproj", "{BD84B4B1-8C09-45C3-AC66-1817B8CD4BB9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClientChat", "ClientChat\ClientChat.csproj", "{CBE7DFE1-28B7-4B46-A58C-737129D02659}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{BD84B4B1-8C09-45C3-AC66-1817B8CD4BB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BD84B4B1-8C09-45C3-AC66-1817B8CD4BB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BD84B4B1-8C09-45C3-AC66-1817B8CD4BB9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CBE7DFE1-28B7-4B46-A58C-737129D02659}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CBE7DFE1-28B7-4B46-A58C-737129D02659}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CBE7DFE1-28B7-4B46-A58C-737129D02659}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CBE7DFE1-28B7-4B46-A58C-737129D02659}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

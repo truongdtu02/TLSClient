@@ -43,9 +43,11 @@ namespace TLSClient
                 var client = new TLSClient(address, port, host.Services.GetRequiredService<ILogger<TLSClient>>());
                 client.ConfigParam(i.ToString(), 10000);
                 // Connect the client
-                Console.Write("Client connecting...");
+                //Console.Write("Client connecting...");
                 client.ConnectAsync();
-                Console.WriteLine("Done!");
+                //Console.WriteLine("Done!");
+
+                Thread.Sleep(1000);
             }
 
             Console.WriteLine("Press Enter to stop the client or '!' to reconnect the client...");

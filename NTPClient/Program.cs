@@ -9,6 +9,14 @@ using UdpClient = NetCoreServer.UdpClient;
 
 namespace NTPClient
 {
+    class dad
+    {
+        protected int dadInt;
+    }
+    class children : dad
+    {
+        internal int clidInt;
+    }
     class NTPClient : UdpClient
     {
         public NTPClient(string address, int port) : base(address, port) { }
@@ -91,6 +99,10 @@ namespace NTPClient
         internal static Stopwatch watch;
         static void Main(string[] args)
         {
+            dad dObj = new children();
+            children childObj = (children)dObj;
+
+
             // UDP server address
             string address = "127.0.0.1";
             //string address = "45.118.145.137";
