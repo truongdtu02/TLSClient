@@ -35,28 +35,40 @@ namespace TLSClient
 
             Console.WriteLine($"TCP server address, port : {address}, {port}");
 
-            Console.Write("Num of clients: ");
-            string tmp = Console.ReadLine();
-            int num = Int32.Parse(tmp);
-            Console.WriteLine("Num of clients: {0}", num);
+            //test client
+            //
+            //Console.Write("Start id: ");
+            //string tmp = Console.ReadLine();
+            //int startId = Int32.Parse(tmp);
+            //Console.WriteLine("Start id: {0}", startId);
+            //
+            //Console.Write("Num of clients: ");
+            //tmp = Console.ReadLine();
+            //int num = Int32.Parse(tmp);
+            //Console.WriteLine("Num of clients: {0}", num);
+            //
+            //Console.Write("Thread sleep: ");
+            //tmp = Console.ReadLine();
+            //int threadsleep = Int32.Parse(tmp);
+            //Console.WriteLine("Thread sleep: {0}", threadsleep);
+            //
+            //for (int i = startId; i < startId + num; i++)
+            //{
+            //    // Create a new TCP chat client
+            //    var client = new TLSClient(address, port, host.Services.GetRequiredService<ILogger<TLSClient>>());
+            //    client.ConfigParam(i.ToString(), 10000);
+            //    // Connect the client
+            //    //Console.Write("Client connecting...");
+            //    client.ConnectAsync();
+            //    //Console.WriteLine("Done!");
+            //
+            //    Thread.Sleep(threadsleep);
+            //}
 
-            Console.Write("Thread sleep: ");
-            tmp = Console.ReadLine();
-            int threadsleep = Int32.Parse(tmp);
-            Console.WriteLine("Thread sleep: {0}", threadsleep);
+            var client = new TLSClient(address, port, host.Services.GetRequiredService<ILogger<TLSClient>>());
+            client.ConfigParam("123412341234", 10000);
 
-            for (int i = 1000; i < 1000 + num; i++)
-            {
-                // Create a new TCP chat client
-                var client = new TLSClient(address, port, host.Services.GetRequiredService<ILogger<TLSClient>>());
-                client.ConfigParam(i.ToString(), 10000);
-                // Connect the client
-                //Console.Write("Client connecting...");
-                client.ConnectAsync();
-                //Console.WriteLine("Done!");
-
-                Thread.Sleep(threadsleep);
-            }
+            client.ConnectAsync();
 
             // Perform text input
             for (; ; )

@@ -13,8 +13,9 @@ namespace TLSClient
 {
     class TLSClient : TcpClient
     {
-        const int CONNECT_TIMEOUT = 10000; //10s, maximum time for establish TCP TLS handshake
-        const int KEEP_ALIVE_INTERVAL = 10000; //send keep alive packet every 60s
+        //debug
+        const int CONNECT_TIMEOUT = 1000000; //10s, maximum time for establish TCP TLS handshake
+        const int KEEP_ALIVE_INTERVAL = 10000000; //send keep alive packet every 60s
         internal bool IsHandshaked { get; private set; } //get successfull ACK
         System.Timers.Timer timer;
         internal long ConnectedTime { get; private set; }
@@ -30,15 +31,21 @@ namespace TLSClient
          */
         struct TcpPacketStruct
         {
-            public const int SIZE_OF_LEN = 4; //4B len of packet, //16B MD5
-            public const int POS_OF_MD5 = 0; //right after len filed
+            public const int POS_OF_LEN = 0;
+            public const int SIZE_OF_LEN = 2; //2B len of packet, //16B MD5
+            public const int POS_OF_MD5 = 2; //right after len filed
             public const int SIZE_OF_MD5 = 16;
-            public const int POS_OF_PAYLOAD = 16; //position of payload of packet
+            public const int POS_OF_PAYLOAD = 18; //position of payload of packet
 
             public const int SIZE_OF_PUBKEY = 256; //bytes
 
             public const int HEADER_LEN = SIZE_OF_LEN + SIZE_OF_MD5;
         }
+        //** param need config
+        internal string token { get; private set; } //~ID of device
+        int tokenLen;
+        int TCP_BUFF_LEN_MAX = 10000;
+
         byte[] headerBuff = new byte[TcpPacketStruct.SIZE_OF_LEN];
         byte[] Tcpbuff;
         int TcpbuffOffset = 0;
@@ -48,10 +55,7 @@ namespace TLSClient
         int curPacketSize;
         bool ErrorRecv = false;
 
-        //** param need config
-        internal string token { get; private set; } //~ID of device
-        int tokenLen;
-        int TCP_BUFF_LEN_MAX = 1000;
+        
 
         //** virtual methods, need to override
         //derived can use to do something when client TLS handshake is successful, like add to list
@@ -65,7 +69,7 @@ namespace TLSClient
         {
 
         }
-
+        
         struct MP3PacketStruct
         {
             public const int POS_OF_MD5 = 0; //right after len filed
@@ -114,7 +118,6 @@ namespace TLSClient
             }
             return !error;
         }
-
 
         public TLSClient(string address, int port, ILogger<TLSClient> log) : base(address, port)
         {
@@ -168,11 +171,19 @@ namespace TLSClient
         {
             //ConnectedTime = DateTimeOffset.Now.ToUnixTimeSeconds();
             _log.LogInformation($"{Id} connected!");
+
+            //send keep alive packet to request rsa-pubkey
+            byte[] kaBuff = new byte[3];
+            kaBuff[0] = 1;
+            SendAsync(kaBuff);
+
+            //initialize Tcp buff
+            Tcpbuff = new byte[TCP_BUFF_LEN_MAX];
         }
 
         protected override void OnDisconnected()
         {
-            _log.LogInformation($"{Id} disconnected!");
+            _log.LogError($"{Id} disconnected!");
 
             OnTLSDisConnectedNotify();
 
@@ -187,7 +198,7 @@ namespace TLSClient
             ErrorRecv = false;
             connectStatus = 0;
 
-            ConnectAsync(); //re-connect
+            //ConnectAsync(); //re-connect
         }
 
         int connectStatus = 0; //0: need pubkey, 1: need ACK, 2:successful TLS handshake
@@ -225,6 +236,7 @@ namespace TLSClient
                         //not enough mem, so just ignore or disconnect, since something wrong
                         if (remainData > TCP_BUFF_LEN_MAX || remainData < 0)
                         {
+                            _log.LogError($"Error len");
                             Disconnect();
                         }
 
@@ -260,6 +272,68 @@ namespace TLSClient
                         //dipose array byte
                         Tcpbuff = null;
                     }
+                }
+            }
+        }
+
+        public void AnalyzeRecvTcpPacketString(byte[] recvData, int offset, int length)
+        {
+            int upper = length + offset;
+            while(length > 0)
+            {
+                int eofPackIndx = -1;
+
+                for (int i = offset; i < upper; i++)
+                {
+                    if (recvData[i] == '#')
+                    {
+                        eofPackIndx = i;
+                        break;
+                    }
+                }
+
+                if (eofPackIndx == -1) //not find "#"
+                {
+                    if(TcpbuffOffset + length < TCP_BUFF_LEN_MAX)
+                    {
+                        System.Buffer.BlockCopy(recvData, offset, Tcpbuff, TcpbuffOffset, length);
+                        length = 0;
+                        TcpbuffOffset += length;
+                    }
+                }
+                else
+                {
+                    int lenTmp = eofPackIndx - offset; // 0 1 2 3 4
+                    if(lenTmp > 0 && TcpbuffOffset + lenTmp < TCP_BUFF_LEN_MAX)
+                    {
+                        System.Buffer.BlockCopy(recvData, offset, Tcpbuff, TcpbuffOffset, lenTmp);
+                        TcpbuffOffset += lenTmp;
+                    }
+                    offset = eofPackIndx + 1; //+1 for "#"
+                    length -= lenTmp - 1; // -1 for "#"
+
+                    //handle tcp packet
+                    if (TcpbuffOffset % 2 == 0) //byte to hex string -> double length of packet
+                    {
+                        //convert string to hex
+                        //TcpbuffOffset ~ length of Tcp packet
+                        Tcpbuff[TcpbuffOffset] = 0;
+                        //convert byte[] to string
+                        string tcpPacketStrTmp = Encoding.ASCII.GetString(Tcpbuff, 0, TcpbuffOffset);
+                        byte[] tcpPacketByteTmp = Convert.FromHexString(tcpPacketStrTmp);
+
+                        //check length field
+                        int lenOfPacket = (int)BitConverter.ToUInt16(tcpPacketByteTmp, 0);
+                        if(lenOfPacket == tcpPacketByteTmp.Length - 2) //2 byte of length field
+                        {
+                            curPacketSize = lenOfPacket;
+                            //copy to Tcpbuff (not include len field)
+                            System.Buffer.BlockCopy(tcpPacketByteTmp, 2, Tcpbuff, 0, curPacketSize);
+                            HandleRecvTcpPacket();
+                        }
+                    }
+
+                    TcpbuffOffset = 0;
                 }
             }
         }
@@ -330,8 +404,8 @@ namespace TLSClient
         void HandleRecvTcpPacket()
         {
             ErrorRecv = true;
-            //at least 16B MD5, 16B data at least 1 block aes-128
-            if (curPacketSize >= 32)
+            //at least 16B MD5, 1B data / payload
+            if (curPacketSize > TcpPacketStruct.SIZE_OF_MD5)
             {
                 //check MD5 first
                 if (CheckMD5(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, curPacketSize - TcpPacketStruct.SIZE_OF_MD5, Tcpbuff, TcpPacketStruct.POS_OF_MD5))
@@ -420,9 +494,9 @@ namespace TLSClient
         {
             //string message = Encoding.UTF8.GetString(buffer, (int)offset, (int)size);
             //Console.WriteLine("Incoming: " + message);
-            _log.LogInformation($"{Id} Recv_len: {size}");
+            //_log.LogInformation($"{Id} Recv_len: {size}");
 
-            AnalyzeRecvTcpPacket(buffer, (int)offset, (int)size);
+            AnalyzeRecvTcpPacketString(buffer, (int)offset, (int)size);
         }
 
         protected override void OnError(SocketError error)
@@ -472,7 +546,7 @@ namespace TLSClient
         {
             if (!IsHandshaked)
             {
-                SendAsync(BitConverter.GetBytes(len));
+                SendAsync(BitConverter.GetBytes((UInt16)len));
                 SendAsync(data, offset, len);
             }
         }
