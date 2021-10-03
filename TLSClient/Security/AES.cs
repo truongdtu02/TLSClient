@@ -7,6 +7,7 @@ namespace Security
 {
     class AES
     {
+        public const int AES_BLOCK_LEN = 16;
         // rconBox //10byte
         static byte[] rcon =
         {
@@ -465,6 +466,31 @@ namespace Security
                 for(int i = 0; i < blockCount; i++)
                 {
                     AES_Decrypt_BLock(input, i*16 + offset, key);
+                }
+                return input;
+            }
+            else
+            {
+                byte[] decrypted = new byte[length];
+                Buffer.BlockCopy(input, offset, decrypted, 0, length);
+                for (int i = 0; i < blockCount; i++)
+                {
+                    AES_Decrypt_BLock(decrypted, i * 16, key);
+                }
+                return decrypted;
+            }
+        }
+
+        static internal byte[] AES_Decrypt_NoPadding(byte[] input, int offset, int length, byte[] key, bool overwrite)
+        {
+            if (key == null || input.Length - offset < length) return null;
+
+            int blockCount = length / 16;
+            if (overwrite)
+            {
+                for (int i = 0; i < blockCount; i++)
+                {
+                    AES_Decrypt_BLock(input, i * 16 + offset, key);
                 }
                 return input;
             }

@@ -46,7 +46,6 @@ namespace TLSClient
         int tokenLen;
         int TCP_BUFF_LEN_MAX = 10000;
 
-        byte[] headerBuff = new byte[TcpPacketStruct.SIZE_OF_LEN];
         byte[] Tcpbuff;
         int TcpbuffOffset = 0;
 
@@ -69,18 +68,50 @@ namespace TLSClient
         {
 
         }
-        
-        struct MP3PacketStruct
+
+        class MP3PacketHeader
         {
-            public const int POS_OF_MD5 = 0; //right after len filed
-            public const int SIZE_OF_MD5 = 16;
-            public const int POS_OF_PAYLOAD = 16; //position of payload of packet
+            public const int AESkeyLen = 16;
 
-            public const int POS_OF_SESSION = 17; //position of session (UInt32)
+            public const int SIZE_OF_LEN = 2;
+            //static UINT16 len;
+            public const int POS_OF_LEN = 0;
 
-            public const int POS_OF_AESKEY = 32; //position of aes key (16B)
+            //16B MD5
+            public const int POS_OF_MD5 = 2;
 
-            public const int POS_OF_VOLUME = 32; //position of volume, from there those is encrypted by above aes key
+            //static byte type;
+            public const int POS_OF_TYPE = 2 + 16;
+
+            //static UInt32 session;
+            public const int POS_OF_SESSION = 2 + 16 + 1;
+            public const int SESSION_LEN = 4; //4B
+
+            //16B AES_key-128
+            public const int POS_OF_AESKEY = 2 + 16 + 1 + 4;
+
+            //static byte volume;
+            public const int POS_OF_VOLUME = 2 + 16 + 1 + 4 + 16;
+
+            //static long timestamp;
+            static int timestamp_offset = 2 + 16 + 1 + 4 + 16 + 1;
+
+            //static UInt32 frameID;
+            static int frameID_offset = 2 + 16 + 1 + 4 + 16 + 1 + 8;
+
+            //static byte numOfFrame; //1B
+            static int numOfFrame_offset = 2 + 16 + 1 + 4 + 16 + 1 + 8 + 4;
+
+            //static UInt16 sizeOfFirstFrame; //2B
+            static int sizeOfFirstFrame_offset = 2 + 16 + 1 + 4 + 16 + 1 + 8 + 4 + 1;
+
+            //static UInt16 frameSize; //2B
+            static int frameSize_offset = 2 + 16 + 1 + 4 + 16 + 1 + 8 + 4 + 1 + 2;
+
+            //static byte timePerFrame; //1B (ms)
+            static int timePerFrame_offset = 2 + 16 + 1 + 4 + 16 + 1 + 8 + 4 + 1 + 2 + 2;
+
+            public const int HEADER_SIZE = 4 + 16 + 1 + 4 + 16 + 1 + 8 + 4 + 1 + 2 + 2 + 1;
         }
 
         //handle TLS packet (after TLS handshake) at derived class, return false ~ error
@@ -90,24 +121,25 @@ namespace TLSClient
         {
             bool error = true;
             //decrypt first block to get type
-            byte[] decrypt = AES.AES_Decrypt(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, 16, AESkey, true);
+            byte[] decrypt = AES.AES_Decrypt(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, AES.AES_BLOCK_LEN, AESkey, true);
             if(decrypt != null)
             {
                 //get type of packet
                 if(Tcpbuff[TcpPacketStruct.POS_OF_PAYLOAD] == (byte)RecvPackeTypeEnum.PacketAudio)
                 {
-                    UInt32 session = BitConverter.ToUInt32(Tcpbuff, MP3PacketStruct.POS_OF_SESSION);
+                    UInt32 session = BitConverter.ToUInt32(Tcpbuff, MP3PacketHeader.POS_OF_SESSION);
 
                     //decrypt next block to get AES key
-                    decrypt = AES.AES_Decrypt(Tcpbuff, MP3PacketStruct.POS_OF_AESKEY, 16, AESkey, true);
+                    decrypt = AES.AES_Decrypt(Tcpbuff, MP3PacketHeader.POS_OF_TYPE + AES.AES_BLOCK_LEN, AES.AES_BLOCK_LEN, AESkey, true);
                     byte[] tmpAESkey = new byte[AESkeyLen];
-                    System.Buffer.BlockCopy(Tcpbuff, MP3PacketStruct.POS_OF_AESKEY, tmpAESkey, 0, AESkeyLen);
+                    System.Buffer.BlockCopy(Tcpbuff, MP3PacketHeader.POS_OF_AESKEY, tmpAESkey, 0, AESkeyLen);
 
                     //decrypt data after volume
-                    int tmpLen = ((curPacketSize - MP3PacketStruct.POS_OF_VOLUME) / 16) * 16;
-                    decrypt = AES.AES_Decrypt(Tcpbuff, MP3PacketStruct.POS_OF_VOLUME, tmpLen, tmpAESkey, true);
-                    if(decrypt != null)
+                    int tmpLen = curPacketSize + MP3PacketHeader.SIZE_OF_LEN - MP3PacketHeader.POS_OF_VOLUME;
+                    decrypt = AES.AES_Decrypt_NoPadding(Tcpbuff, MP3PacketHeader.POS_OF_VOLUME, tmpLen, tmpAESkey, true);
+                    if(decrypt != null && Tcpbuff[curPacketSize + 1] == 'y' && Tcpbuff[MP3PacketHeader.POS_OF_VOLUME] == 100) //debug
                     {
+                        Console.Write(".");
                         error = false;
                     }
                 }
@@ -203,78 +235,6 @@ namespace TLSClient
 
         int connectStatus = 0; //0: need pubkey, 1: need ACK, 2:successful TLS handshake
         //first we wil store length filed (4B) to read len of packet
-        public void AnalyzeRecvTcpPacket(byte[] recvData, int offset, int length)
-        {
-            while (length > 0)
-            {
-                //beggin get length of packet
-                if (!bIsPending)
-                {
-                    //barely occur, not enough data to detect lenght of TCP packet
-                    if ((TcpbuffOffset + length) < TcpPacketStruct.SIZE_OF_LEN)
-                    {
-                        System.Buffer.BlockCopy(recvData, offset, headerBuff, TcpbuffOffset, length);
-                        TcpbuffOffset += length;
-                        length = 0;
-                    }
-                    //else enough data to detect
-                    else
-                    {
-                        //copy just enough
-                        int tmpOffset = TcpPacketStruct.SIZE_OF_LEN - TcpbuffOffset;
-                        System.Buffer.BlockCopy(recvData, offset, headerBuff, TcpbuffOffset, tmpOffset);
-                        TcpbuffOffset = 0; //reset to 0 to copy payload
-                        length -= tmpOffset;
-                        offset += tmpOffset;
-                        bIsPending = true;
-
-                        remainData = BitConverter.ToInt32(headerBuff, 0);
-                        curPacketSize = remainData;
-
-                        Tcpbuff = new byte[curPacketSize];
-
-                        //not enough mem, so just ignore or disconnect, since something wrong
-                        if (remainData > TCP_BUFF_LEN_MAX || remainData < 0)
-                        {
-                            _log.LogError($"Error len");
-                            Disconnect();
-                        }
-
-                    }
-                }
-                //got length, continue collect data
-                else
-                {
-                    //save to buff
-                    //not enough data to get
-                    if (length < remainData)
-                    {
-                        System.Buffer.BlockCopy(recvData, offset, Tcpbuff, TcpbuffOffset, length);
-                        TcpbuffOffset += length;
-                        remainData -= length;
-                        length = 0; //handled all data in tcpPacket
-                    }
-                    else
-                    {
-                        //done packet
-                        System.Buffer.BlockCopy(recvData, offset, Tcpbuff, TcpbuffOffset, remainData);
-                        length -= remainData;
-                        offset += remainData;
-                        //reset
-                        bIsPending = false;
-                        TcpbuffOffset = 0;
-                    }
-
-                    //that mean get done a packet
-                    if (!bIsPending)
-                    {
-                        HandleRecvTcpPacket();
-                        //dipose array byte
-                        Tcpbuff = null;
-                    }
-                }
-            }
-        }
 
         public void AnalyzeRecvTcpPacketString(byte[] recvData, int offset, int length)
         {
@@ -297,8 +257,8 @@ namespace TLSClient
                     if(TcpbuffOffset + length < TCP_BUFF_LEN_MAX)
                     {
                         System.Buffer.BlockCopy(recvData, offset, Tcpbuff, TcpbuffOffset, length);
-                        length = 0;
                         TcpbuffOffset += length;
+                        length = 0;
                     }
                 }
                 else
@@ -310,7 +270,7 @@ namespace TLSClient
                         TcpbuffOffset += lenTmp;
                     }
                     offset = eofPackIndx + 1; //+1 for "#"
-                    length -= lenTmp - 1; // -1 for "#"
+                    length -= (lenTmp + 1); // +1 for "#"
 
                     //handle tcp packet
                     if (TcpbuffOffset % 2 == 0) //byte to hex string -> double length of packet
@@ -327,8 +287,8 @@ namespace TLSClient
                         if(lenOfPacket == tcpPacketByteTmp.Length - 2) //2 byte of length field
                         {
                             curPacketSize = lenOfPacket;
-                            //copy to Tcpbuff (not include len field)
-                            System.Buffer.BlockCopy(tcpPacketByteTmp, 2, Tcpbuff, 0, curPacketSize);
+                            //copy to Tcpbuff (include len field)
+                            System.Buffer.BlockCopy(tcpPacketByteTmp, 0, Tcpbuff, 0, tcpPacketByteTmp.Length);
                             HandleRecvTcpPacket();
                         }
                     }
@@ -338,7 +298,7 @@ namespace TLSClient
             }
         }
 
-        bool CheckMD5(byte[] inputData, int offsetData, int countData, byte[] inputMD5, int offsetMD5)
+        bool CheckMD5()
         {
             //check AES
             if (connectStatus == 0) //it is first packet pubkey, not necessary decrypt MD5
@@ -348,15 +308,15 @@ namespace TLSClient
             else
             {
                 //decrypt MD5 first
-                byte[] MD5checksum = AES.AES_Decrypt(inputMD5, offsetMD5, TcpPacketStruct.SIZE_OF_MD5, AESkey, true); //overwrite
+                byte[] MD5checksum = AES.AES_Decrypt(Tcpbuff, TcpPacketStruct.POS_OF_MD5, TcpPacketStruct.SIZE_OF_MD5, AESkey, true); //overwrite
                 if (MD5checksum == null) return false;
             }
 
-            byte[] hashed = MD5.MD5Hash(inputData, offsetData, countData);
+            byte[] hashed = MD5.MD5Hash(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, curPacketSize - TcpPacketStruct.SIZE_OF_MD5);
             //CompareMD5 (16B)
             for (int i = 0; i < TcpPacketStruct.SIZE_OF_MD5; i++)
             {
-                if (hashed[i] != inputMD5[offsetMD5 + i]) return false;
+                if (hashed[i] != Tcpbuff[TcpPacketStruct.POS_OF_MD5 + i]) return false;
             }
             return true;
         }
@@ -408,7 +368,7 @@ namespace TLSClient
             if (curPacketSize > TcpPacketStruct.SIZE_OF_MD5)
             {
                 //check MD5 first
-                if (CheckMD5(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, curPacketSize - TcpPacketStruct.SIZE_OF_MD5, Tcpbuff, TcpPacketStruct.POS_OF_MD5))
+                if (CheckMD5())
                 {
                     if (IsHandshaked)
                     {
@@ -428,7 +388,7 @@ namespace TLSClient
                             AESkey = new byte[AESkeyLen];
                             Random rd = new Random();
                             rd.NextBytes(AESkey);
-                            byte[] sendBuff = new byte[TcpPacketStruct.SIZE_OF_MD5 + tokenLen + tokenLen + AESkeyLen];
+                            byte[] sendBuff = new byte[TcpPacketStruct.HEADER_LEN + tokenLen + tokenLen + AESkeyLen];
                             rd.NextBytes(sendBuff);
 
                             //copy token to send buff
@@ -445,25 +405,33 @@ namespace TLSClient
                             System.Buffer.BlockCopy(AESkey, 0, sendBuff, TcpPacketStruct.POS_OF_PAYLOAD + tokenLen + tokenLen, AESkeyLen);
 
                             //caculate MD5
-                            byte[] md5sum = MD5.MD5Hash(sendBuff, TcpPacketStruct.SIZE_OF_MD5, tokenLen + tokenLen + AESkeyLen);
-                            System.Buffer.BlockCopy(md5sum, 0, sendBuff, 0, md5sum.Length);
+                            byte[] md5sum = MD5.MD5Hash(sendBuff, TcpPacketStruct.POS_OF_PAYLOAD, tokenLen + tokenLen + AESkeyLen);
+                            System.Buffer.BlockCopy(md5sum, 0, sendBuff, TcpPacketStruct.POS_OF_MD5, md5sum.Length);
 
                             //encrypt RSA
-                            byte[] encrypted = RSA.Encrypt(sendBuff, pubKey, expponent);
+                            byte[] rsaBuff = new byte[sendBuff.Length - TcpPacketStruct.SIZE_OF_LEN];
+                            System.Buffer.BlockCopy(sendBuff, TcpPacketStruct.POS_OF_MD5, rsaBuff, 0, rsaBuff.Length);
+
+                            byte[] encrypted = RSA.Encrypt(rsaBuff, pubKey, expponent);
                             if (encrypted != null)
                             {
-                                SendHandshakePackAsync(encrypted, 0, encrypted.Length);
+                                sendBuff = new byte[encrypted.Length + TcpPacketStruct.SIZE_OF_LEN];
+                                System.Buffer.BlockCopy(encrypted, 0, sendBuff, TcpPacketStruct.POS_OF_MD5, encrypted.Length);
+                                //copy len field
+                                System.Buffer.BlockCopy(BitConverter.GetBytes((UInt16)encrypted.Length), 0, sendBuff, TcpPacketStruct.POS_OF_LEN, 2);
+
+                                SendAsync(sendBuff);
                                 connectStatus = 1;
                                 ErrorRecv = false;
                             }
                         }
                         else if (connectStatus == 1) //ack packet
                         {
-                            byte[] output = AES.AES_Decrypt(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, curPacketSize - TcpPacketStruct.SIZE_OF_MD5, AESkey, true);
+                            byte[] output = AES.AES_Decrypt_NoPadding(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, curPacketSize - TcpPacketStruct.SIZE_OF_MD5, AESkey, true);
                             if(output != null)
                             {
                                 //check salt
-                                if(CheckSaltACK(output, TcpPacketStruct.POS_OF_PAYLOAD, curPacketSize - TcpPacketStruct.SIZE_OF_MD5))
+                                if(CheckSaltACK(Tcpbuff, TcpPacketStruct.POS_OF_PAYLOAD, curPacketSize - TcpPacketStruct.SIZE_OF_MD5))
                                 {
                                     ErrorRecv = false;
                                     IsHandshaked = true;
